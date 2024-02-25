@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 
-class Chess_Game:
+class ChessGame:
 
     def __init__(self):
         self.board = [
@@ -27,7 +27,7 @@ class Chess_Game:
         self.counter = 0
         self.color_turn = 'w'
 
-    def Player_Turn(self, row, col):
+    def player_turn(self, row, col):
 
         self.color_turn = 'w' if self.counter % 2 == 0 else 'b'
         try:
