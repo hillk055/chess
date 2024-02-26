@@ -28,43 +28,50 @@ class ChessGame:
         self.king_in_check = False
         self.king_check_position = None
 
-    def check(self):
+    def check(self, context, board, attacking_color, defending_color):
 
-        all_color_moves = []
-        self.color_turn = 'w' if self.counter % 2 == 0 else 'b'
+        all_color_moves = {}
         # Can maybe get rid of this depending on implementation if called directly
         # from update board this line is redundant
-        for i, row in enumerate(self.board):
+        for i, row in enumerate(board):
             for j, value in enumerate(row):
-                if value == '_':
+                if value == '_' or value[0] == attacking_color:
                     continue
-                if value[1] == 'k' and value[0] != self.color_turn:
-                    self.king_position = (i, j)
-                if value[0] == self.color_turn:
-                    find_piece = value[1]
-                    has_moved = self.moved[value] if value in self.moved.keys() else True
-                    moves = Pieces(i, j, has_moved, self.color_turn, self.board)
+                if value[1] == 'k':
+                    king_position = (i, j)
+                    print(king_position)
+        for i1, row1 in enumerate(board):
+            for j1, value1 in enumerate(row1):
+                if value1 == '_' or value1[0] == defending_color:
+                    continue
+                find_piece = value1[1]
+                has_moved = self.moved[value1] if value1 in self.moved.keys() else True
+                moves = Pieces(i1, j1, has_moved, attacking_color, board, True)
 
-                    if find_piece == 'p':
-                        all_moves = moves.pawn()
-                    elif find_piece == 'r':
-                        all_moves = moves.rook()
-                    elif find_piece == 'n':
-                        all_moves = moves.knight()
-                    elif find_piece == 'b':
-                        all_moves = moves.bishop()
-                    elif find_piece == 'q':
-                        all_moves = moves.queen()
+                if find_piece == 'p':
+                    all_moves = moves.pawn()
+                    all_color_moves[value1] = all_moves
+                elif find_piece == 'r':
+                    all_moves = moves.rook()
+                    all_color_moves[value1] = all_moves
+                elif find_piece == 'n':
+                    all_moves = moves.knight()
+                    all_color_moves[value1] = all_moves
+                elif find_piece == 'b':
+                    all_moves = moves.bishop()
+                    all_color_moves[value1] = all_moves
+                elif find_piece == 'q':
+                    all_moves = moves.queen()
+                    all_color_moves[value1] = all_moves
 
-                    all_color_moves.extend(all_moves)  # Extend the list with all possible moves
+        print(all_color_moves)
 
-        # Check if king_position is in the list of all possible moves
-        if self.king_position in all_color_moves:
-            self.king_in_check = True
-            print('check')
 
     def player_turn(self, row, col):
 
+        if self.king_in_check:
+            print('yes')
+            self.must_move_king()
         self.color_turn = 'w' if self.counter % 2 == 0 else 'b'
         try:
             find_piece = self.board[row][col]
@@ -78,7 +85,7 @@ class ChessGame:
             return []
         find_piece = find_piece[1]
 
-        moves = Pieces(row, col, has_moved, color, self.board)
+        moves = Pieces(row, col, has_moved, color, self.board, False)
 
         if find_piece == 'p':
 
@@ -121,7 +128,7 @@ class ChessGame:
         find_piece = looking_for_piece[1]
 
         has_moved = self.moved[find_piece] if find_piece in self.moved.keys() else False
-        moves = Pieces(row, col, has_moved, color, self.board)
+        moves = Pieces(row, col, has_moved, color, self.board, False)
 
 
         if find_piece == 'p':
@@ -153,7 +160,7 @@ class ChessGame:
             if piece_to_update in self.moved.keys():
                 self.moved[piece_to_update] = True
 
-            self.check()
+            self.check('Method1', self.board)
             self.counter += 1
 
             return looking_for_piece, new_xy, taking_piece, piece_being_taken, self.king_in_check, self.king_position
@@ -161,22 +168,35 @@ class ChessGame:
     def must_move_king(self):
 
         possible_moves_to_protect_king = []
-        copy_board = self.board
-        pawn = 'bp8'
-        row = 1
-        col = 7
-        has_moved = self.moved[pawn] if pawn in self.moved.keys() else False
-        moves = Pieces(1, 7, has_moved, pawn[0], copy_board)
-        moves_list = moves.pawn()
-        for i in moves_list:
-            copy_board[row][col]
+        copy_board = np.copy(self.board)
+        for i, row in enumerate(self.board):
+            for j, value in enumerate(row):
+                if value == '_':
+                    continue
+                piece = value
+                row = i
+                col = j
+                has_moved = self.moved[piece] if piece in self.moved.keys() else False
+                moves = Pieces(row, col, has_moved, piece[0], copy_board)
+                moves_list = moves.pawn()
+                for move in moves_list:
+                    new_row = move[0]
+                    new_col = move[1]
+                    copy_board[new_row][new_col] = piece
+                    copy_board[row][col] = '_'
+                    print(copy_board)
+                    copy_board = np.copy(self.board)
+                    is_check = self.check('Method2', copy_board)
+                    if not is_check:
+                        possible_moves_to_protect_king.append((new_row, new_col))
+        print(possible_moves_to_protect_king)
 
 
 
 # noinspection PyUnboundLocalVariable
 class Pieces:
 
-    def __init__(self, row: int, column: int, moved, color: str, board, ) -> None:
+    def __init__(self, row: int, column: int, moved, color: str, board, iteration) -> None:
 
         self.board = board
         self.BOARD_SIZE = 8
@@ -185,6 +205,7 @@ class Pieces:
         self.column = column
         self.moved = moved
         self.possible_moves = []
+        self.iteration = iteration
 
     def pawn(self) -> list:
 
@@ -261,8 +282,8 @@ class Pieces:
 
         return self.possible_moves
 
-    def bishop(self) -> list:
-
+    def bishop(self, board, row, column) -> list:
+        
         # Can move only diagonally, so we can use y = mx + c
         # To solve the locations we have grad = +- 1
         values = np.arange(0, self.BOARD_SIZE)
@@ -419,6 +440,3 @@ class Pieces:
             if i in self.possible_moves:
                 self.possible_moves.remove(i)
         return self.possible_moves
-
-game = ChessGame()
-game.must_move_king()
