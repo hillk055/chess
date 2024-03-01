@@ -1,5 +1,5 @@
 import numpy as np
-
+from collections import defaultdict
 
 class ChessGame:
 
@@ -20,59 +20,82 @@ class ChessGame:
             'bp5': False, 'bp6': False, 'bp7': False, 'bp8': False,
             'wp1': False, 'wp2': False, 'wp3': False, 'wp4': False,
             'wp5': False, 'wp6': False, 'wp7': False, 'wp8': False,
-            'wk': False, 'wr1': False, 'br1': False, 'br2': False
+            'wk': False, 'wr1': False, 'wr2': False, 'bk': False,
+            'br1': False, 'br2': False
         }
         self.board = np.array(self.board)
         self.counter = 0
         self.color_turn = 'w'
         self.king_in_check = False
         self.king_check_position = None
+        self.possible_moves_to_protect_king = defaultdict(list)
 
-    def check(self, context, board, attacking_color, defending_color):
+    def check(self, context, board, color_being_checked):
 
-        all_color_moves = {}
+        # if color being checked iss black then we loop through all white moves to see if true
+        colors = ['w', 'b']
+        colors.remove(color_being_checked)
+        attacking_color = colors[0]
+        print(attacking_color)
+        copy_board = np.array(board)
+        all_moves = {}
+        king_position = None
         # Can maybe get rid of this depending on implementation if called directly
         # from update board this line is redundant
-        for i, row in enumerate(board):
+        for king_i, king_row in enumerate(board):
+            for king_j, king_value in enumerate(king_row):
+                if king_value == '_' or king_value[0] == attacking_color:
+                    continue
+                if king_value[1] == 'k':
+                    self.king_position = (king_i, king_j)
+
+        for i, row in enumerate(copy_board):
             for j, value in enumerate(row):
-                if value == '_' or value[0] == attacking_color:
+                if value == '_' or value[0] == color_being_checked:
                     continue
-                if value[1] == 'k':
-                    king_position = (i, j)
-                    print(king_position)
-        for i1, row1 in enumerate(board):
-            for j1, value1 in enumerate(row1):
-                if value1 == '_' or value1[0] == defending_color:
-                    continue
-                find_piece = value1[1]
-                has_moved = self.moved[value1] if value1 in self.moved.keys() else True
-                moves = Pieces(i1, j1, has_moved, attacking_color, board, True)
+                print(value)
+                moves = Pieces(i, j, False, attacking_color, copy_board, self.king_in_check,
+                               self.possible_moves_to_protect_king)
+                if value[1] == 'b':
 
-                if find_piece == 'p':
-                    all_moves = moves.pawn()
-                    all_color_moves[value1] = all_moves
-                elif find_piece == 'r':
-                    all_moves = moves.rook()
-                    all_color_moves[value1] = all_moves
-                elif find_piece == 'n':
-                    all_moves = moves.knight()
-                    all_color_moves[value1] = all_moves
-                elif find_piece == 'b':
-                    all_moves = moves.bishop()
-                    all_color_moves[value1] = all_moves
-                elif find_piece == 'q':
-                    all_moves = moves.queen()
-                    all_color_moves[value1] = all_moves
+                    all_moves[value] = moves.bishop()
+                elif value[1] == 'n':
 
-        print(all_color_moves)
+                    all_moves[value] = moves.knight()
+                elif value[1] == 'r':
 
+                    all_moves[value] = moves.rook()
+                elif value[1] == 'q':
 
+                    all_moves[value] = moves.queen()
+                elif value[1] == 'k':
+
+                    all_moves[value] = moves.king()
+                elif value[1] == 'p':
+
+                    all_moves[value] = moves.pawn()
+
+        is_check = any(self.king_position in position for position in all_moves.values())
+        if context == 'Game':
+            if is_check:
+                self.king_in_check = True
+            else:
+                self.king_in_check = False
+        if context == 'iteration':
+            if is_check:
+                return True
+            return False
     def player_turn(self, row, col):
 
-        if self.king_in_check:
-            print('yes')
-            self.must_move_king()
+        moves_that_cause_check = []
+        all_moves = None
         self.color_turn = 'w' if self.counter % 2 == 0 else 'b'
+        if self.king_in_check:
+            self.must_move_king()
+            if self.board[row][col] in self.possible_moves_to_protect_king.keys():
+                return self.possible_moves_to_protect_king[self.board[row][col]]
+            return []
+
         try:
             find_piece = self.board[row][col]
         except IndexError:
@@ -83,120 +106,178 @@ class ChessGame:
         color = find_piece[0]
         if color != self.color_turn:
             return []
-        find_piece = find_piece[1]
+        find_piece_first_letter = find_piece[1]
 
-        moves = Pieces(row, col, has_moved, color, self.board, False)
 
-        if find_piece == 'p':
+        moves = Pieces(row, col, has_moved, color, self.board, self.king_in_check, self.possible_moves_to_protect_king)
 
-            return moves.pawn()
-        elif find_piece == 'r':
+        if find_piece_first_letter == 'p':
 
-            return moves.rook()
-        elif find_piece == 'n':
+            all_moves = moves.pawn()
+            copy_board = np.array(self.board)
+            for moves in all_moves:
+                copy_board[moves[0]][moves[1]] = find_piece
+                copy_board[row][col] = '_'
+                check = self.check('iteration', copy_board, self.color_turn)
+                if check:
+                    moves_that_cause_check.append(moves)
+                copy_board = np.array(self.board)
+            for i in moves_that_cause_check:
+                all_moves.remove(i)
+            return all_moves
 
-            return moves.knight()
-        elif find_piece == 'b':
+        elif find_piece_first_letter == 'r':
 
-            return moves.bishop()
-        elif find_piece == 'q':
+            all_moves = moves.rook()
+            return all_moves
+        elif find_piece_first_letter == 'n':
 
-            return moves.queen()
-        elif find_piece == 'k':
+            all_moves = moves.knight()
+            return all_moves
+        elif find_piece_first_letter == 'b':
 
-            return moves.king()
+            all_moves = moves.bishop()
+            return all_moves
+        elif find_piece_first_letter == 'q':
 
+            all_moves = moves.queen()
+            return all_moves
+        elif find_piece_first_letter == 'k':
+
+            all_moves = moves.king()
+            return all_moves
 
     def update_board(self, current_xy, new_xy):
 
-        self.king_in_check = False
         piece_being_taken = None
         taking_piece = False
         self.color_turn = 'w' if self.counter % 2 == 0 else 'b'
-
+        color_being_checked = 'w' if self.color_turn == 'b' else 'b'
         row, col = current_xy
         new_row, new_col = new_xy
-        try:
-            looking_for_piece = self.board[row][col]
-        except IndexError:
-            return []
-        if looking_for_piece == '_':
-            return []
-        if looking_for_piece[0] != self.color_turn:
-            return
+        looking_for_piece = self.board[row][col]
+
         color = str(looking_for_piece[0])
         find_piece = looking_for_piece[1]
 
         has_moved = self.moved[find_piece] if find_piece in self.moved.keys() else False
-        moves = Pieces(row, col, has_moved, color, self.board, False)
 
+        if self.king_in_check:
+            self.must_move_king()
+            if self.board[row][col] in self.possible_moves_to_protect_king.keys():
+                if new_xy == self.possible_moves_to_protect_king[self.board[row][col]][0]:
+                    if self.board[new_row][new_col][0] != self.color_turn and self.board[new_row][new_col] != '_':
+                        taking_piece = True
+                        piece_being_taken = self.board[new_row][new_col]
+                    piece_to_update = self.board[row][col]
+                    self.board[new_row][new_col] = self.board[row][col]
+                    self.board[row][col] = '_'
+                    if piece_to_update in self.moved.keys():
+                        self.moved[piece_to_update] = True
 
-        if find_piece == 'p':
+                    self.counter += 1
 
-            moves_to_make= moves.pawn()
-        elif find_piece == 'r':
+                    self.check('Game', self.board, self.color_turn)
+                    return looking_for_piece, new_xy, taking_piece, piece_being_taken, self.king_in_check, self.king_position
 
-            moves_to_make = moves.rook()
-        elif find_piece == 'n':
-
-            moves_to_make = moves.knight()
-        elif find_piece == 'b':
-
-            moves_to_make = moves.bishop()
-        elif find_piece == 'q':
-
-            moves_to_make = moves.queen()
         else:
+            self.king_in_check = False
+            piece_being_taken = None
+            taking_piece = False
+            self.color_turn = 'w' if self.counter % 2 == 0 else 'b'
 
-            moves_to_make = moves.king()
+            try:
+                looking_for_piece = self.board[row][col]
+            except IndexError:
+                return []
+            if looking_for_piece == '_':
+                return []
+            if looking_for_piece[0] != self.color_turn:
+                return
 
-        if new_xy in moves_to_make:
-            if self.board[new_row][new_col][0] != self.color_turn and self.board[new_row][new_col] != '_':
-                taking_piece = True
-                piece_being_taken = self.board[new_row][new_col]
-            piece_to_update = self.board[row][col]
-            self.board[new_row][new_col] = self.board[row][col]
-            self.board[row][col] = '_'
-            if piece_to_update in self.moved.keys():
-                self.moved[piece_to_update] = True
+            moves = Pieces(row, col, has_moved, color, self.board, self.king_in_check, self.possible_moves_to_protect_king)
 
-            self.check('Method1', self.board)
-            self.counter += 1
+            if find_piece == 'p':
 
-            return looking_for_piece, new_xy, taking_piece, piece_being_taken, self.king_in_check, self.king_position
+                moves_to_make= moves.pawn()
+            elif find_piece == 'r':
+
+                moves_to_make = moves.rook()
+            elif find_piece == 'n':
+
+                moves_to_make = moves.knight()
+            elif find_piece == 'b':
+
+                moves_to_make = moves.bishop()
+            elif find_piece == 'q':
+
+                moves_to_make = moves.queen()
+            else:
+
+                moves_to_make = moves.king()
+
+            if new_xy in moves_to_make:
+                if self.board[new_row][new_col][0] != self.color_turn and self.board[new_row][new_col] != '_':
+                    taking_piece = True
+                    piece_being_taken = self.board[new_row][new_col]
+                piece_to_update = self.board[row][col]
+                self.board[new_row][new_col] = self.board[row][col]
+                self.board[row][col] = '_'
+                if piece_to_update in self.moved.keys():
+                    self.moved[piece_to_update] = True
+
+
+                self.counter += 1
+
+                self.check('Game', self.board, color_being_checked)
+                return looking_for_piece, new_xy, taking_piece, piece_being_taken, self.king_in_check, self.king_position
 
     def must_move_king(self):
+        # This colors turn to move
+        color_being_checked = 'w' if self.counter % 2 == 0 else 'b'
+        # Attacking pieces are the ones we are trying to move away from
+        attacking_pieces = 'w' if color_being_checked == 'b' else 'b'
 
-        possible_moves_to_protect_king = []
         copy_board = np.copy(self.board)
         for i, row in enumerate(self.board):
             for j, value in enumerate(row):
-                if value == '_':
+                if value == '_' or value[0] == attacking_pieces:
                     continue
-                piece = value
-                row = i
-                col = j
-                has_moved = self.moved[piece] if piece in self.moved.keys() else False
-                moves = Pieces(row, col, has_moved, piece[0], copy_board)
-                moves_list = moves.pawn()
-                for move in moves_list:
-                    new_row = move[0]
-                    new_col = move[1]
-                    copy_board[new_row][new_col] = piece
-                    copy_board[row][col] = '_'
-                    print(copy_board)
-                    copy_board = np.copy(self.board)
-                    is_check = self.check('Method2', copy_board)
-                    if not is_check:
-                        possible_moves_to_protect_king.append((new_row, new_col))
-        print(possible_moves_to_protect_king)
 
+                if value[1] == 'b':
+                    moves = Pieces(i, j, False, color_being_checked, copy_board, self.king_in_check, self.possible_moves_to_protect_king)
+                    all_moves = moves.bishop()
+                elif value[1] == 'n':
+                    moves = Pieces(i, j, False, color_being_checked, copy_board, self.king_in_check, self.possible_moves_to_protect_king)
+                    all_moves = moves.knight()
+                elif value[1] == 'r':
+                    moves = Pieces(i, j, False, color_being_checked, copy_board, self.king_in_check, self.possible_moves_to_protect_king)
+                    all_moves = moves.rook()
+                elif value[1] == 'q':
+                    moves = Pieces(i, j, False, color_being_checked, copy_board, self.king_in_check, self.possible_moves_to_protect_king)
+                    all_moves = moves.queen()
+                elif value[1] == 'k':
+                    moves = Pieces(i, j, False, color_being_checked, copy_board, self.king_in_check, self.possible_moves_to_protect_king)
+                    all_moves = moves.king()
+                elif value[1] == 'p':
+                    moves = Pieces(i, j, False, color_being_checked, copy_board, self.king_in_check, self.possible_moves_to_protect_king)
+                    all_moves = moves.pawn()
+
+                for move in all_moves:
+                    copy_board[move[0]][move[1]] = value
+                    copy_board[i][j] = '_'
+
+                    is_check = self.check('iteration', copy_board, color_being_checked)
+                    if not is_check:
+                        self.possible_moves_to_protect_king[value].append((move[0], move[1]))
+                    copy_board = np.array(self.board)
+        return self.possible_moves_to_protect_king
 
 
 # noinspection PyUnboundLocalVariable
 class Pieces:
 
-    def __init__(self, row: int, column: int, moved, color: str, board, iteration) -> None:
+    def __init__(self, row: int, column: int, moved, color: str, board, king_check, moves_to_protect) -> None:
 
         self.board = board
         self.BOARD_SIZE = 8
@@ -205,7 +286,9 @@ class Pieces:
         self.column = column
         self.moved = moved
         self.possible_moves = []
-        self.iteration = iteration
+        self.king_check = king_check
+        self.possible_moves_to_protect_king = moves_to_protect
+
 
     def pawn(self) -> list:
 
@@ -262,19 +345,19 @@ class Pieces:
 
     def knight(self) -> list:
 
+
         # The knight cannot be blocked, so we do not need to check where it can move apart from the restrictions of the
         # board width.
         # return: List of possible moves for the knight given a starting point
 
-        for dx in [-2, -1, 1, 2]:
-            for dy in [-2, -1, 1, 2]:
-
-                if (abs(dx) == 1 == abs(dy) == 1) or (abs(dx) == 2 == abs(dy) == 2):
+        knight_moves = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
+        for moves in knight_moves:
+            dx = moves[0]
+            dy = moves[1]
+            if 0 <= self.row + dy < self.BOARD_SIZE and 0 <= self.column + dx < self.BOARD_SIZE:
+                if self.board[self.row + dy][self.column + dx][0] == self.color:
                     continue
-                if 0 <= self.row + dy < self.BOARD_SIZE and 0 <= self.column + dx < self.BOARD_SIZE:
-                    if self.board[self.row + dy][self.column + dx][0] == self.color:
-                        break
-                    self.possible_moves.append((self.row + dy, self.column + dx))
+                self.possible_moves.append((self.row + dy, self.column + dx))
 
         moves_not_allowed = [(i, j) for i, j in self.possible_moves if self.board[i][j][0] == self.color]
         for i in moves_not_allowed:
@@ -282,10 +365,8 @@ class Pieces:
 
         return self.possible_moves
 
-    def bishop(self, board, row, column) -> list:
-        
-        # Can move only diagonally, so we can use y = mx + c
-        # To solve the locations we have grad = +- 1
+    def bishop(self) -> list:
+
         values = np.arange(0, self.BOARD_SIZE)
 
         # Positive grad, Negative grad
@@ -440,3 +521,9 @@ class Pieces:
             if i in self.possible_moves:
                 self.possible_moves.remove(i)
         return self.possible_moves
+
+
+
+
+
+    
